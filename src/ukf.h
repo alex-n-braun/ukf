@@ -68,7 +68,7 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
-  ///* the current NIS for radar
+  ///* the current NIS for radar; NIS == Normalized Innovation Squared
   double NIS_radar_;
 
   ///* the current NIS for laser
@@ -88,8 +88,9 @@ public:
    * ProcessMeasurement
    * @param meas_package The latest measurement data of either radar or laser
    */
-  void ProcessMeasurement(MeasurementPackage meas_package);
+  void ProcessMeasurement(const MeasurementPackage & measurement_pack);
 
+private:
   /**
    * Prediction Predicts sigma points, the state, and the state covariance
    * matrix
@@ -101,23 +102,25 @@ public:
    * Updates the state and the state covariance matrix using a laser measurement
    * @param meas_package The measurement at k+1
    */
-  void UpdateLidar(MeasurementPackage meas_package);
+  void UpdateLidar(const MeasurementPackage & measurement_pack);
 
   /**
    * Updates the state and the state covariance matrix using a radar measurement
    * @param meas_package The measurement at k+1
    */
-  void UpdateRadar(MeasurementPackage meas_package);
+  void UpdateRadar(const MeasurementPackage & measurement_pack);
 
 private:
-  void GenerateSigmaPoints(MatrixXd & Xsig_out);
-  void AugmentedSigmaPoints(MatrixXd & Xsig_out);
-  void SigmaPointPrediction(MatrixXd & Xsig_out, const MatrixXd & Xsig_aug, double delta_t);
-  void PredictMeanAndCovariance(VectorXd & x_out, MatrixXd & P_out, const MatrixXd & Xsig_pred);
-  void PredictRadarMeasurement(VectorXd & z_out, MatrixXd & S_out, const MatrixXd & Xsig_pred);
-  void UpdateState(VectorXd & x_out, MatrixXd & P_out,
-                   const MatrixXd & Xsig_pred, const VectorXd & x_pred, const MatrixXd & P_pred,
-                   const MatrixXd & Zsig, const VectorXd & z_pred, const MatrixXd & S,
+  void Initialize(const MeasurementPackage & measurement_pack);
+//  void GenerateSigmaPoints(MatrixXd & Xsig);
+  void AugmentedSigmaPoints(MatrixXd & Xsig_aug) const;
+  void SigmaPointPrediction(const MatrixXd & Xsig_aug, double delta_t);
+  void PredictMeanAndCovariance();
+  void PredictRadarMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd & S) const;
+  void UpdateRadarMeasurement(const MatrixXd & Z_sig, const VectorXd & z_pred, const MatrixXd & S,
+                   const VectorXd & z);
+  void PredictLaserMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd & S) const;
+  void UpdateLaserMeasurement(const MatrixXd & Z_sig, const VectorXd & z_pred, const MatrixXd & S,
                    const VectorXd & z);
 };
 
