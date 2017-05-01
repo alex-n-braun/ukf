@@ -36,6 +36,7 @@ UKF::UKF() {
   n_aug_ = n_x_ + 2;
 
   // set weights
+  weights_ = VectorXd(2*n_aug_+1);
   double weight_0 = lambda_/(lambda_+n_aug_);
   weights_(0) = weight_0;
   for (int i=1; i<2*n_aug_+1; i++) {  //2n+1 weights
@@ -502,26 +503,22 @@ void UKF::UpdateRadarMeasurement(const MatrixXd & Z_sig, const VectorXd & z_pred
 
 void UKF::PredictLaserMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd & S) const {
 
-  //set measurement dimension, radar can measure r, phi, and r_dot
-  const int n_z(3);
+  //set measurement dimension, laser can measure px, py
+  const int n_z(2);
 
   //transform sigma points into measurement space
-  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+/*  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
 
     // extract values for better readibility
     double p_x = Xsig_pred_(0,i);
     double p_y = Xsig_pred_(1,i);
-    double v  = Xsig_pred_(2,i);
-    double yaw = Xsig_pred_(3,i);
-
-    double v1 = cos(yaw)*v;
-    double v2 = sin(yaw)*v;
 
     // measurement model
-    Z_sig(0,i) = sqrt(p_x*p_x + p_y*p_y);                        //r
-    Z_sig(1,i) = atan2(p_y,p_x);                                 //phi
-    Z_sig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y);   //r_dot
-  }
+    Z_sig(0,i) = p_x;
+    Z_sig(1,i) = p_y;
+  }*/
+
+  Z_sig=Xsig_pred_.topRows<n_z>();
 
   //mean predicted measurement
 
@@ -537,18 +534,13 @@ void UKF::PredictLaserMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd 
     //residual
     VectorXd z_diff = Z_sig.col(i) - z_pred;
 
-    //angle normalization
-    while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-    while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
-
     S = S + weights_(i) * z_diff * z_diff.transpose();
   }
 
   //add measurement noise covariance matrix
   MatrixXd R = MatrixXd(n_z,n_z);
-  R <<    std_radr_*std_radr_, 0, 0,
-          0, std_radphi_*std_radphi_, 0,
-          0, 0,std_radrd_*std_radrd_;
+  R <<    std_laspx_*std_laspx_, 0,
+          0, std_laspy_*std_laspy_;
   S = S + R;
 }
 
@@ -556,7 +548,7 @@ void UKF::PredictLaserMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd 
 void UKF::UpdateLaserMeasurement(const MatrixXd & Z_sig, const VectorXd & z_pred, const MatrixXd & S,
                       const VectorXd & z) {
   //set measurement dimension, radar can measure r, phi, and r_dot
-  const int n_z(3);
+  const int n_z(2);
 
   //create matrix for cross correlation Tc
   MatrixXd Tc = MatrixXd(n_x_, n_z);
@@ -567,15 +559,9 @@ void UKF::UpdateLaserMeasurement(const MatrixXd & Z_sig, const VectorXd & z_pred
 
     //residual
     VectorXd z_diff(Z_sig.col(i) - z_pred);
-    //angle normalization
-    while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-    while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
 
     // state difference
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
-    //angle normalization
-    while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
-    while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
 
     Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
   }
@@ -587,15 +573,11 @@ void UKF::UpdateLaserMeasurement(const MatrixXd & Z_sig, const VectorXd & z_pred
   //residual
   VectorXd z_diff = z - z_pred;
 
-  //angle normalization
-  while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-  while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
-
   //update state mean and covariance matrix & write result
   x_ = x_ + K * z_diff;
   P_ = P_ - K*S*K.transpose();
 
   // compute NIS
-  NIS_radar_ = z_diff.transpose() * Si * z_diff;
+  NIS_laser_ = z_diff.transpose() * Si * z_diff;
 }
 
