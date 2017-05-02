@@ -27,7 +27,6 @@ UKF::UKF() {
   // initial covariance matrix
   P_ = MatrixXd::Identity(n_x_, n_x_);
     // initialize to identity matrix;
-  //HINT: to be optimized
 
   //define spreading parameter
   lambda_ = 3 - n_x_;
@@ -48,15 +47,10 @@ UKF::UKF() {
   Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 3;
-    // according to lecture, this is a sensible value for cars;
-    // however, we are dealing with bicycles here.
-  //HINT: to be optimized.
+  std_a_ = 2;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = M_PI;
-    // starting value; needs to be adapted. Probably too high
-  //HINT: to be optimized.
+  std_yawdd_ = 0.5*M_PI;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -111,10 +105,12 @@ void UKF::ProcessMeasurement(const MeasurementPackage & measurement_pack) {
   // delta time (in seconds)
   double dt((measurement_pack.timestamp_ - time_us_)*1.0e-6);
 
-  Prediction(dt);
+  if (dt>0) {
+    Prediction(dt);
 
-  // update time stamp
-  time_us_ = measurement_pack.timestamp_;
+    // update time stamp
+    time_us_ = measurement_pack.timestamp_;
+  }
 
 
   /*****************************************************************************
@@ -140,38 +136,6 @@ void UKF::Prediction(double delta_t) {
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
-/*    // state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
-//  auto px(x_(0)); not needed!
-//  auto py(x_(1));
-  auto v(x_(2));
-  auto psi(x_(3));
-  auto psi_d(x_(4));
-
-  // compute delta for state vector
-  double d_v(0.0);
-  double d_psi(psi*delta_t);
-  double d_psi_d(0.0);
-
-  // computation of new position; distinguish psi == 0 and psi != 0
-  double d_px;
-  double d_py;
-  if (abs(psi)<1e-15) { // psi is (close to) zero
-    d_px = v * cos(psi) * delta_t;
-    d_py = v * sin(psi) * delta_t;
-  } else {
-    double vpsi(v/psi);
-    double psi_psi_d_t(psi + psi_d * delta_t);
-    d_px = vpsi * (sin(psi_psi_d_t)-sin(psi));
-    d_py = vpsi * (cos(psi)-cos(psi_psi_d_t));
-  }
-
-  VectorXd delta_x(5);
-  delta_x << d_px, d_py, d_v, d_psi, d_psi_d;
-  x_ = x_ + delta_x; */
-
-/*  //create sigma point matrix
-  MatrixXd Xsig = MatrixXd(n_x_, 2 * n_x_ + 1);
-  GenerateSigmaPoints(Xsig);*/
 
   {
     //create augmented sigma point matrix
@@ -248,44 +212,29 @@ void UKF::Initialize(const MeasurementPackage & measurement_pack) {
   cout << "UKF: " << endl;
 
   if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
-    /**
-    Convert radar from polar to cartesian coordinates and initialize state.
-    */
-    float rho(measurement_pack.raw_measurements_[0]);
-    float phi(measurement_pack.raw_measurements_[1]);
-    float c_phi=cos(phi); float s_phi=sin(phi);
-    float rho_dot(measurement_pack.raw_measurements_[2]);
+      /**
+      Convert radar from polar to cartesian coordinates and initialize state.
+      */
+    double rho(measurement_pack.raw_measurements_[0]);
+    double phi(measurement_pack.raw_measurements_[1]);
+    double c_phi=cos(phi); double s_phi=sin(phi);
+    double rho_dot(measurement_pack.raw_measurements_[2]);
     x_<<rho*c_phi, rho*s_phi, rho_dot, 0.0, 0.0;
+    // done initializing
+    is_initialized_ = true;
   }
   else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
+    double px(measurement_pack.raw_measurements_[0]);
+    double py(measurement_pack.raw_measurements_[1]);
     /**
     Initialize state.
     */
-    x_<<measurement_pack.raw_measurements_[0],
-        measurement_pack.raw_measurements_[1], 0.0, 0.0, 0.0;
+    x_<<px, py, 0.0, 0.0, 0.0;
+    // done initializing
+    is_initialized_ = true;
   }
   time_us_ = measurement_pack.timestamp_;
-
-  // done initializing, no need to predict or update
-  is_initialized_ = true;
 }
-
-/*void UKF::GenerateSigmaPoints(MatrixXd & Xsig) {
-  //calculate square root of P
-  MatrixXd A = P_.llt().matrixL();
-
-  //calculate sigma points ...
-  //set sigma points as columns of matrix Xsig
-
-  double factor(sqrt(lambda_+n_x_));
-  A *= factor;
-
-  Xsig.col(0)=x_;
-  for (int i(0); i<n_x_; ++i) {
-    Xsig.col(i+1)=x_+A.col(i);
-    Xsig.col(i+1+n_x_)=x_-A.col(i);
-  }
-}*/
 
 
 void UKF::AugmentedSigmaPoints(MatrixXd & Xsig_aug) const {
@@ -422,7 +371,11 @@ void UKF::PredictRadarMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd 
     // measurement model
     Z_sig(0,i) = sqrt(p_x*p_x + p_y*p_y);                        //r
     Z_sig(1,i) = atan2(p_y,p_x);                                 //phi
-    Z_sig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y);   //r_dot
+    // position can be zero!
+    if (fabs(p_x)>1e-3 | fabs(p_y)>1e-3)
+      Z_sig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y); //r_dot
+    else
+      Z_sig(2,i) = sqrt(v1*v1+v2*v2);                            //r_dot
   }
 
   //mean predicted measurement
@@ -507,17 +460,6 @@ void UKF::PredictLaserMeasurement(MatrixXd & Z_sig, VectorXd & z_pred, MatrixXd 
   const int n_z(2);
 
   //transform sigma points into measurement space
-/*  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
-
-    // extract values for better readibility
-    double p_x = Xsig_pred_(0,i);
-    double p_y = Xsig_pred_(1,i);
-
-    // measurement model
-    Z_sig(0,i) = p_x;
-    Z_sig(1,i) = p_y;
-  }*/
-
   Z_sig=Xsig_pred_.topRows<n_z>();
 
   //mean predicted measurement
